@@ -83,108 +83,108 @@ export default function OIChartAlpha5() {
           const changeInPE = Number(overlay.extendData.changeInPE || 0);
           const price = overlay.extendData.price;
 
-          // pixel coord of this strike (first coordinate)
+          // pixel coord of this strike (first coordinate) - this is aligned with price axis
           const coord = coordinates[0];
           const centerY = coord.y;
 
-          // layout params
-          const BAR_H = 8;
-          const GAP = 4;
-          const areaWidth = Math.max(60, bounding.width / 3); // 1/3 area minimum 60px
-          const rightX = bounding.right - 20; // slightly inside right edge
+          // layout params - position bars inside chart area on right side
+          const BAR_H = 6;
+          const GAP = 2;
+          const maxBarWidth = 80; // maximum bar width
+          const chartRightEdge = bounding.right - 5; // inside chart boundary
+
           // scale relative to the max among the 4 values (so stacked bars are proportionate)
           const maxVal = Math.max(Math.abs(ce), Math.abs(pe), Math.abs(changeInCE), Math.abs(changeInPE), 1);
 
           // compute widths
-          const ceW = (Math.abs(ce) / maxVal) * areaWidth;
-          const peW = (Math.abs(pe) / maxVal) * areaWidth;
-          const chCeW = (Math.abs(changeInCE) / maxVal) * (areaWidth * 0.6); // change bars slightly shorter
-          const chPeW = (Math.abs(changeInPE) / maxVal) * (areaWidth * 0.6);
+          const ceW = (Math.abs(ce) / maxVal) * maxBarWidth;
+          const peW = (Math.abs(pe) / maxVal) * maxBarWidth;
+          const chCeW = (Math.abs(changeInCE) / maxVal) * (maxBarWidth * 0.6); // change bars slightly shorter
+          const chPeW = (Math.abs(changeInPE) / maxVal) * (maxBarWidth * 0.6);
 
           // vertical stacking: top to bottom
-          // positions: y_top = centerY - 1.5*BAR_H - 1.5*GAP
           const totalHeight = BAR_H * 4 + GAP * 3;
           const topY = centerY - totalHeight / 2;
 
-          // 1) CE bar (green) - top
+          // 1) CE bar (green) - top, extends left from right edge
           const ceY = topY;
           if (ceW > 0) {
             figures.push({
               type: 'oiBar',
-              attrs: { x: rightX - ceW, y: ceY, width: ceW, height: BAR_H },
-              styles: { color: 'rgba(76,175,80,0.9)' }
+              attrs: { x: chartRightEdge - ceW, y: ceY, width: ceW, height: BAR_H },
+              styles: { color: 'rgba(76,175,80,0.8)' }
             });
-            // CE value text to left of bar (optional)
+            // CE value text to left of bar
             figures.push({
               type: 'oiText',
-              attrs: { x: rightX - ceW - 8, y: ceY + BAR_H / 2, text: `${ce}` },
-              styles: { color: '#2e7d32', size: 10 }
+              attrs: { x: chartRightEdge - ceW - 5, y: ceY + BAR_H / 2, text: `${ce}` },
+              styles: { color: '#2e7d32', size: 9 }
             });
           }
 
-          // 2) PE bar (red) - just below CE
+          // 2) PE bar (red) - just below CE, extends right from left edge
           const peY = ceY + BAR_H + GAP;
           if (peW > 0) {
             figures.push({
               type: 'oiBar',
-              attrs: { x: rightX + 0, y: peY, width: peW, height: BAR_H },
-              styles: { color: 'rgba(244,67,54,0.9)' }
+              attrs: { x: chartRightEdge - maxBarWidth, y: peY, width: peW, height: BAR_H },
+              styles: { color: 'rgba(244,67,54,0.8)' }
             });
             figures.push({
               type: 'oiText',
-              attrs: { x: rightX + peW + 8, y: peY + BAR_H / 2, text: `${pe}` },
-              styles: { color: '#b71c1c', size: 10 }
+              attrs: { x: chartRightEdge - maxBarWidth + peW + 5, y: peY + BAR_H / 2, text: `${pe}` },
+              styles: { color: '#b71c1c', size: 9 }
             });
           }
 
           // 3) changeInCE (lighter green / yellow) - below PE
           const chCeY = peY + BAR_H + GAP;
           if (chCeW > 0) {
-            const color = changeInCE >= 0 ? 'rgba(146,208,80,0.9)' : 'rgba(255,193,7,0.9)';
+            const color = changeInCE >= 0 ? 'rgba(146,208,80,0.7)' : 'rgba(255,193,7,0.7)';
             figures.push({
               type: 'oiBar',
-              attrs: { x: rightX - chCeW, y: chCeY, width: chCeW, height: BAR_H - 2 },
+              attrs: { x: chartRightEdge - chCeW, y: chCeY, width: chCeW, height: BAR_H },
               styles: { color }
             });
             figures.push({
               type: 'oiText',
-              attrs: { x: rightX - chCeW - 8, y: chCeY + (BAR_H - 2) / 2, text: `${changeInCE}` },
-              styles: { color: '#666', size: 9 }
+              attrs: { x: chartRightEdge - chCeW - 5, y: chCeY + BAR_H / 2, text: `${changeInCE}` },
+              styles: { color: '#666', size: 8 }
             });
           }
 
           // 4) changeInPE (lighter red / orange) - bottom
-          const chPeY = chCeY + (BAR_H - 2) + GAP;
+          const chPeY = chCeY + BAR_H + GAP;
           if (chPeW > 0) {
-            const color = changeInPE >= 0 ? 'rgba(255,150,150,0.9)' : 'rgba(255,102,0,0.9)';
+            const color = changeInPE >= 0 ? 'rgba(255,150,150,0.7)' : 'rgba(255,102,0,0.7)';
             figures.push({
               type: 'oiBar',
-              attrs: { x: rightX + 0, y: chPeY, width: chPeW, height: BAR_H - 2 },
+              attrs: { x: chartRightEdge - maxBarWidth, y: chPeY, width: chPeW, height: BAR_H },
               styles: { color }
             });
             figures.push({
               type: 'oiText',
-              attrs: { x: rightX + chPeW + 8, y: chPeY + (BAR_H - 2) / 2, text: `${changeInPE}` },
-              styles: { color: '#666', size: 9 }
+              attrs: { x: chartRightEdge - maxBarWidth + chPeW + 5, y: chPeY + BAR_H / 2, text: `${changeInPE}` },
+              styles: { color: '#666', size: 8 }
             });
           }
 
-          // optional: faint strike guide line across area
+          // Strike price guide line - extends across chart at the exact price level
           figures.push({
             type: 'strikeLine',
             attrs: {
-              x1: rightX - areaWidth - 40,
+              x1: bounding.left,
               y: centerY,
-              x2: rightX + areaWidth + 40
+              x2: bounding.right
             },
-            styles: { color: 'rgba(120,120,120,0.06)', width: 0.6, dash: [3, 3] }
+            styles: { color: 'rgba(120,120,120,0.1)', width: 0.5, dash: [2, 2] }
           });
 
-          // strike label (price)
+          // strike label (price) - positioned at right edge
           figures.push({
             type: 'oiText',
-            attrs: { x: rightX + areaWidth + 48, y: centerY, text: `${price}` },
-            styles: { color: '#666', size: 11 }
+            attrs: { x: chartRightEdge + 8, y: centerY, text: `${price}` },
+            styles: { color: '#888', size: 10 }
           });
 
           return figures;
