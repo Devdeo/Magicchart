@@ -5,7 +5,7 @@ import { init, dispose } from 'klinecharts';
 
 /**
  * KLineCharts v10 alpha5 — OI overlay using correct v10 API
- * CE = green bars, PE = red bars, aligned on right side price axis
+ * CE = green bars (left), PE = red bars (right), like Sensibull
  */
 export default function OIChartAlpha5() {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -20,20 +20,21 @@ export default function OIChartAlpha5() {
     chart.createOverlayTemplate({
       name: 'oi-bars',
       totalStep: 1,
+      needDefaultPointFigure: false,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
       createPointFigures: ({ overlay, coordinates, bounding, yAxis }) => {
         const figures: any[] = [];
         
         if (!overlay.points || !coordinates) return figures;
 
         // Find max OI value for scaling
-        const maxOI = Math.max(
-          ...overlay.points.flatMap((p: any) => [Math.abs(p.ce || 0), Math.abs(p.pe || 0)]),
-          1
-        );
+        const allOIValues = overlay.points.flatMap((p: any) => [Math.abs(p.ce || 0), Math.abs(p.pe || 0)]);
+        const maxOI = Math.max(...allOIValues, 1);
 
-        const barWidth = 6;
-        const maxBarLength = 80; // max pixels for bars
-        const rightEdge = bounding.right - 10; // leave some margin from edge
+        const barHeight = 8;
+        const maxBarLength = 100; // max pixels for bars
+        const priceAxisX = bounding.width - 60; // where price axis starts
 
         coordinates.forEach((coord: any, i: number) => {
           const dataPoint = overlay.points[i];
@@ -42,54 +43,105 @@ export default function OIChartAlpha5() {
           const ceLength = (Math.abs(dataPoint.ce || 0) / maxOI) * maxBarLength;
           const peLength = (Math.abs(dataPoint.pe || 0) / maxOI) * maxBarLength;
 
-          // CE Bar (green) - rightmost
+          // CE Bar (green) - left side of price axis
           if (ceLength > 0) {
             figures.push({
               type: 'rect',
               attrs: {
-                x: rightEdge - ceLength,
-                y: coord.y - barWidth / 2,
+                x: priceAxisX - ceLength - 5,
+                y: coord.y - barHeight / 2,
                 width: ceLength,
-                height: barWidth,
+                height: barHeight,
               },
               styles: {
                 style: 'fill',
                 color: 'rgba(76, 175, 80, 0.8)' // green
               }
             });
+
+            // CE text label
+            figures.push({
+              type: 'text',
+              attrs: {
+                x: priceAxisX - ceLength - 10,
+                y: coord.y,
+                text: `${dataPoint.ce}`
+              },
+              styles: {
+                color: '#4caf50',
+                size: 10,
+                family: 'Arial',
+                align: 'right',
+                baseline: 'middle'
+              }
+            });
           }
 
-          // PE Bar (red) - left of CE bar with small gap
+          // PE Bar (red) - right side of price axis
           if (peLength > 0) {
             figures.push({
               type: 'rect',
               attrs: {
-                x: rightEdge - ceLength - peLength - 4,
-                y: coord.y - barWidth / 2,
+                x: priceAxisX + 5,
+                y: coord.y - barHeight / 2,
                 width: peLength,
-                height: barWidth,
+                height: barHeight,
               },
               styles: {
                 style: 'fill',
                 color: 'rgba(244, 67, 54, 0.8)' // red
               }
             });
+
+            // PE text label
+            figures.push({
+              type: 'text',
+              attrs: {
+                x: priceAxisX + peLength + 15,
+                y: coord.y,
+                text: `${dataPoint.pe}`
+              },
+              styles: {
+                color: '#f44336',
+                size: 10,
+                family: 'Arial',
+                align: 'left',
+                baseline: 'middle'
+              }
+            });
           }
 
-          // Faint price level line
+          // Strike price line and label
           figures.push({
             type: 'line',
             attrs: {
               coordinates: [
-                { x: rightEdge - maxBarLength - 10, y: coord.y },
-                { x: rightEdge, y: coord.y }
+                { x: priceAxisX - maxBarLength - 20, y: coord.y },
+                { x: priceAxisX + maxBarLength + 20, y: coord.y }
               ]
             },
             styles: {
               style: 'stroke',
-              color: 'rgba(150, 150, 150, 0.15)',
+              color: 'rgba(150, 150, 150, 0.3)',
               size: 1,
-              dashedValue: [2, 2]
+              dashedValue: [3, 3]
+            }
+          });
+
+          // Strike price label
+          figures.push({
+            type: 'text',
+            attrs: {
+              x: priceAxisX - maxBarLength - 25,
+              y: coord.y,
+              text: `${dataPoint.price}`
+            },
+            styles: {
+              color: '#666',
+              size: 10,
+              family: 'Arial',
+              align: 'right',
+              baseline: 'middle'
             }
           });
         });
@@ -98,13 +150,13 @@ export default function OIChartAlpha5() {
       }
     });
 
-    // 3) synthetic candles roughly spanning 100..1000
-    const candles = Array.from({ length: 120 }, (_, i) => {
-      const base = 100 + (i / 119) * 900; // linear from 100 to 1000
-      const open = +(base + (Math.random() - 0.5) * 30).toFixed(2);
-      const close = +(open + (Math.random() - 0.5) * 30).toFixed(2);
-      const high = +Math.max(open, close) + +(Math.random() * 10).toFixed(2);
-      const low = +Math.min(open, close) - +(Math.random() * 10).toFixed(2);
+    // 3) Generate synthetic candle data
+    const candles = Array.from({ length: 50 }, (_, i) => {
+      const base = 24000 + (i / 49) * 2000; // prices from 24000 to 26000
+      const open = +(base + (Math.random() - 0.5) * 100).toFixed(2);
+      const close = +(open + (Math.random() - 0.5) * 100).toFixed(2);
+      const high = +Math.max(open, close) + +(Math.random() * 50).toFixed(2);
+      const low = +Math.min(open, close) - +(Math.random() * 50).toFixed(2);
       const ts = Date.now() + i * 60 * 1000;
       return { 
         timestamp: ts, 
@@ -119,26 +171,28 @@ export default function OIChartAlpha5() {
     // 4) Set candle data
     chart.applyNewData(candles);
 
-    // 5) Generate OI data for specific strike levels
-    const strikeOIData = Array.from({ length: 10 }, (_, idx) => {
-      const price = 100 + (idx * 100); // strikes at 100, 200, 300, ..., 1000
-      const ce = Math.round(Math.random() * 5000);
-      const pe = Math.round(Math.random() * 5000);
-      
-      return {
-        timestamp: Date.now(), // all strikes at current time
-        price,
-        ce,
-        pe
-      };
-    });
+    // 5) Generate OI data for specific strike levels (like option strikes)
+    const strikeOIData = [
+      { price: 24000, ce: 1500, pe: 2200 },
+      { price: 24200, ce: 2800, pe: 1900 },
+      { price: 24400, ce: 3200, pe: 1600 },
+      { price: 24600, ce: 2900, pe: 1800 },
+      { price: 24800, ce: 2100, pe: 2500 },
+      { price: 25000, ce: 4500, pe: 4200 }, // ATM strike
+      { price: 25200, ce: 2600, pe: 2900 },
+      { price: 25400, ce: 1800, pe: 3100 },
+      { price: 25600, ce: 1400, pe: 3500 },
+      { price: 25800, ce: 1100, pe: 3800 },
+      { price: 26000, ce: 900, pe: 4100 },
+    ];
 
     // 6) Add overlay with OI data mapped to price points
     chart.addOverlay({
       name: 'oi-bars',
       points: strikeOIData.map(strike => ({
-        timestamp: strike.timestamp,
-        value: strike.price, // this maps to the price axis
+        timestamp: Date.now(), // current time for all strikes
+        value: strike.price, // this maps to the y-axis (price level)
+        price: strike.price,
         ce: strike.ce,
         pe: strike.pe
       }))
