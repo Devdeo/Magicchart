@@ -2,14 +2,6 @@
 import React, { useEffect, useRef } from 'react';
 import { init, dispose, registerFigure, registerOverlay } from 'klinecharts';
 
-/**
- * KLineCharts v10 alpha5 — OI overlay using registerFigure + registerOverlay
- * Draws FOUR stacked bars per strike:
- *  - CE (green)
- *  - PE (red)
- *  - changeInCE (lighter green / yellow)
- *  - changeInPE (lighter red / orange)
- */
 export default function OIChartAlpha5() {
   const ref = useRef<HTMLDivElement | null>(null);
   const registeredRef = useRef(false);
@@ -17,9 +9,7 @@ export default function OIChartAlpha5() {
   useEffect(() => {
     if (!ref.current) return;
 
-    // Register figures and overlay only once
     if (!registeredRef.current) {
-      // oiBar rectangle
       registerFigure({
         name: 'oiBar',
         draw: (ctx, attrs, styles) => {
@@ -35,7 +25,6 @@ export default function OIChartAlpha5() {
         }
       });
 
-      // text label
       registerFigure({
         name: 'oiText',
         draw: (ctx, attrs, styles) => {
@@ -50,7 +39,6 @@ export default function OIChartAlpha5() {
         checkEventOn: () => false
       });
 
-      // strike guide line
       registerFigure({
         name: 'strikeLine',
         draw: (ctx, attrs, styles) => {
@@ -68,7 +56,7 @@ export default function OIChartAlpha5() {
         checkEventOn: () => false
       });
 
-      // overlay that creates the figures for a single strike (uses overlay.extendData fields)
+      // FIXED OVERLAY: Correct right-side positioning
       registerOverlay({
         name: 'oiOverlay',
         totalStep: 1,
@@ -76,114 +64,130 @@ export default function OIChartAlpha5() {
           const figures: any[] = [];
           if (!overlay?.extendData || !coordinates?.length) return figures;
 
-          // get values from extendData (expect ce, pe, changeInCE, changeInPE, price)
           const ce = Number(overlay.extendData.ce || 0);
           const pe = Number(overlay.extendData.pe || 0);
           const changeInCE = Number(overlay.extendData.changeInCE || 0);
           const changeInPE = Number(overlay.extendData.changeInPE || 0);
           const price = overlay.extendData.price;
 
-          // pixel coord of this strike (first coordinate) - this is aligned with price axis
           const coord = coordinates[0];
           const centerY = coord.y;
 
-          // layout params - position bars hugging the Y-axis (left side)
+          // Corrected layout parameters
           const BAR_H = 6;
           const GAP = 2;
-          const maxBarWidth = 80; // maximum bar width
-          const yAxisX = bounding.left + 5; // start from Y-axis with small padding
+          const maxBarWidth = 80;
+          const RIGHT_PADDING = 5;
+          const rightEdge = bounding.width - RIGHT_PADDING; // FIX: Use full width
 
-          // scale relative to the max among the 4 values (so stacked bars are proportionate)
           const maxVal = Math.max(Math.abs(ce), Math.abs(pe), Math.abs(changeInCE), Math.abs(changeInPE), 1);
 
-          // compute widths
           const ceW = (Math.abs(ce) / maxVal) * maxBarWidth;
           const peW = (Math.abs(pe) / maxVal) * maxBarWidth;
-          const chCeW = (Math.abs(changeInCE) / maxVal) * (maxBarWidth * 0.6); // change bars slightly shorter
+          const chCeW = (Math.abs(changeInCE) / maxVal) * (maxBarWidth * 0.6);
           const chPeW = (Math.abs(changeInPE) / maxVal) * (maxBarWidth * 0.6);
 
-          // vertical stacking: top to bottom, centered on the strike price line
           const totalHeight = BAR_H * 4 + GAP * 3;
           const topY = centerY - totalHeight / 2;
 
-          // 1) CE bar (green) - top, extends right from Y-axis
+          // 1) CE bar - FIXED positioning
           const ceY = topY;
           if (ceW > 0) {
             figures.push({
               type: 'oiBar',
-              attrs: { x: yAxisX, y: ceY, width: ceW, height: BAR_H },
+              // FIX: Proper right-aligned position
+              attrs: { x: rightEdge - ceW, y: ceY, width: ceW, height: BAR_H },
               styles: { color: 'rgba(76,175,80,0.8)' }
             });
-            // CE value text to right of bar
             figures.push({
               type: 'oiText',
-              attrs: { x: yAxisX + ceW + 5, y: ceY + BAR_H / 2, text: `${ce}` },
+              attrs: { 
+                x: rightEdge - ceW - 5, 
+                y: ceY + BAR_H / 2, 
+                text: `${ce}` 
+              },
               styles: { color: '#2e7d32', size: 9 }
             });
           }
 
-          // 2) PE bar (red) - just below CE, extends right from Y-axis
+          // 2) PE bar - FIXED positioning
           const peY = ceY + BAR_H + GAP;
           if (peW > 0) {
             figures.push({
               type: 'oiBar',
-              attrs: { x: yAxisX, y: peY, width: peW, height: BAR_H },
+              attrs: { x: rightEdge - peW, y: peY, width: peW, height: BAR_H },
               styles: { color: 'rgba(244,67,54,0.8)' }
             });
             figures.push({
               type: 'oiText',
-              attrs: { x: yAxisX + peW + 5, y: peY + BAR_H / 2, text: `${pe}` },
+              attrs: { 
+                x: rightEdge - peW - 5, 
+                y: peY + BAR_H / 2, 
+                text: `${pe}` 
+              },
               styles: { color: '#b71c1c', size: 9 }
             });
           }
 
-          // 3) changeInCE (lighter green / yellow) - below PE, extends right from Y-axis
+          // 3) changeInCE - FIXED positioning
           const chCeY = peY + BAR_H + GAP;
           if (chCeW > 0) {
             const color = changeInCE >= 0 ? 'rgba(146,208,80,0.7)' : 'rgba(255,193,7,0.7)';
             figures.push({
               type: 'oiBar',
-              attrs: { x: yAxisX, y: chCeY, width: chCeW, height: BAR_H },
+              attrs: { x: rightEdge - chCeW, y: chCeY, width: chCeW, height: BAR_H },
               styles: { color }
             });
             figures.push({
               type: 'oiText',
-              attrs: { x: yAxisX + chCeW + 5, y: chCeY + BAR_H / 2, text: `${changeInCE}` },
+              attrs: { 
+                x: rightEdge - chCeW - 5, 
+                y: chCeY + BAR_H / 2, 
+                text: `${changeInCE}` 
+              },
               styles: { color: '#666', size: 8 }
             });
           }
 
-          // 4) changeInPE (lighter red / orange) - bottom, extends right from Y-axis
+          // 4) changeInPE - FIXED positioning
           const chPeY = chCeY + BAR_H + GAP;
           if (chPeW > 0) {
             const color = changeInPE >= 0 ? 'rgba(255,150,150,0.7)' : 'rgba(255,102,0,0.7)';
             figures.push({
               type: 'oiBar',
-              attrs: { x: yAxisX, y: chPeY, width: chPeW, height: BAR_H },
+              attrs: { x: rightEdge - chPeW, y: chPeY, width: chPeW, height: BAR_H },
               styles: { color }
             });
             figures.push({
               type: 'oiText',
-              attrs: { x: yAxisX + chPeW + 5, y: chPeY + BAR_H / 2, text: `${changeInPE}` },
+              attrs: { 
+                x: rightEdge - chPeW - 5, 
+                y: chPeY + BAR_H / 2, 
+                text: `${changeInPE}` 
+              },
               styles: { color: '#666', size: 8 }
             });
           }
 
-          // Strike price guide line - extends across chart at the exact price level
+          // Strike guide line
           figures.push({
             type: 'strikeLine',
             attrs: {
-              x1: bounding.left,
+              x1: 0,  // FIX: Start from left edge
               y: centerY,
-              x2: bounding.right
+              x2: bounding.width  // FIX: Extend to full width
             },
             styles: { color: 'rgba(120,120,120,0.1)', width: 0.5, dash: [2, 2] }
           });
 
-          // strike label (price) - positioned at right edge of chart
+          // Strike price label
           figures.push({
             type: 'oiText',
-            attrs: { x: bounding.right - 45, y: centerY, text: `${price}` },
+            attrs: { 
+              x: 5,  // FIX: Left edge position
+              y: centerY, 
+              text: `${price}` 
+            },
             styles: { color: '#888', size: 10 }
           });
 
@@ -194,10 +198,8 @@ export default function OIChartAlpha5() {
       registeredRef.current = true;
     }
 
-    // Initialize chart
     const chart = init(ref.current);
 
-    // Synthetic candles roughly 24000..26000
     const candles = Array.from({ length: 50 }, (_, i) => {
       const base = 24000 + (i / 49) * 2000;
       const open = +(base + (Math.random() - 0.5) * 100).toFixed(2);
@@ -209,7 +211,6 @@ export default function OIChartAlpha5() {
     });
     chart.applyNewData(candles);
 
-    // Strike OI data (include changeInCE/changeInPE)
     const strikeOIData = [
       { price: 24000, ce: 1500, pe: 2200, changeInCE: 120, changeInPE: -80 },
       { price: 24200, ce: 2800, pe: 1900, changeInCE: -220, changeInPE: 60 },
@@ -224,7 +225,6 @@ export default function OIChartAlpha5() {
       { price: 26000, ce: 900, pe: 4100, changeInCE: -60, changeInPE: 120 },
     ];
 
-    // Create an overlay per strike and pass all four values via extendData
     strikeOIData.forEach((strike) => {
       try {
         chart.createOverlay({
@@ -240,16 +240,16 @@ export default function OIChartAlpha5() {
           lock: true
         });
       } catch (e) {
-        // some alpha builds differ in API — log if needed
-        // console.error('createOverlay error', e);
+        console.error('Overlay creation error:', e);
       }
     });
 
-    // cleanup
     return () => {
       try {
-        dispose(ref.current as any);
-      } catch (e) {}
+        dispose(ref.current as HTMLDivElement);
+      } catch (e) {
+        console.error('Dispose error:', e);
+      }
     };
   }, []);
 
