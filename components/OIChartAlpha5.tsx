@@ -1,156 +1,201 @@
 
 'use client';
 import React, { useEffect, useRef } from 'react';
-import { init, dispose } from 'klinecharts';
+import { init, dispose, registerFigure, registerOverlay } from 'klinecharts';
 
 /**
- * KLineCharts v10 alpha5 — OI overlay using correct v10 API
+ * KLineCharts v10 alpha5 — OI overlay using registerFigure + registerOverlay
  * CE = green bars (left), PE = red bars (right), like Sensibull
  */
 export default function OIChartAlpha5() {
   const ref = useRef<HTMLDivElement | null>(null);
+  const registeredRef = useRef(false);
 
   useEffect(() => {
     if (!ref.current) return;
 
-    // 1) init chart instance
-    const chart = init(ref.current);
+    // Register figures and overlays only once
+    if (!registeredRef.current) {
+      // 1. Register horizontal ray figure for OI bars
+      registerFigure({
+        name: 'oiBar',
+        draw: (ctx, attrs, styles) => {
+          const { x, y, width, height } = attrs;
+          const { color } = styles;
+          
+          ctx.fillStyle = color;
+          ctx.fillRect(x, y, width, height);
+        },
+        checkEventOn: (coordinate, attrs) => {
+          const { x, y } = coordinate;
+          const { x: attrX, y: attrY, width, height } = attrs;
+          return x >= attrX && x <= attrX + width && y >= attrY && y <= attrY + height;
+        }
+      });
 
-    // 2) Register custom overlay template for OI bars BEFORE adding data
-    chart.createOverlayTemplate({
-      name: 'oi-bars',
-      totalStep: 1,
-      needDefaultPointFigure: false,
-      needDefaultXAxisFigure: false,
-      needDefaultYAxisFigure: false,
-      createPointFigures: ({ overlay, coordinates, bounding, yAxis }) => {
-        const figures: any[] = [];
-        
-        if (!overlay.points || !coordinates) return figures;
+      // 2. Register text figure for OI values
+      registerFigure({
+        name: 'oiText',
+        draw: (ctx, attrs, styles) => {
+          const { x, y, text } = attrs;
+          const { color, size, family } = styles;
+          
+          ctx.fillStyle = color;
+          ctx.font = `${size}px ${family}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, x, y);
+        },
+        checkEventOn: () => false
+      });
 
-        // Find max OI value for scaling
-        const allOIValues = overlay.points.flatMap((p: any) => [Math.abs(p.ce || 0), Math.abs(p.pe || 0)]);
-        const maxOI = Math.max(...allOIValues, 1);
+      // 3. Register strike line figure
+      registerFigure({
+        name: 'strikeLine',
+        draw: (ctx, attrs, styles) => {
+          const { x1, y, x2 } = attrs;
+          const { color, width, dash } = styles;
+          
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          if (dash) {
+            ctx.setLineDash(dash);
+          }
+          ctx.beginPath();
+          ctx.moveTo(x1, y);
+          ctx.lineTo(x2, y);
+          ctx.stroke();
+          if (dash) {
+            ctx.setLineDash([]);
+          }
+        },
+        checkEventOn: () => false
+      });
 
-        const barHeight = 8;
-        const maxBarLength = 100; // max pixels for bars
-        const priceAxisX = bounding.width - 60; // where price axis starts
+      // 4. Register OI overlay
+      registerOverlay({
+        name: 'oiOverlay',
+        totalStep: 1,
+        createPointFigures: ({ coordinates, overlay, bounding }) => {
+          const figures: any[] = [];
+          
+          if (!overlay.extendData || !coordinates.length) return figures;
 
-        coordinates.forEach((coord: any, i: number) => {
-          const dataPoint = overlay.points[i];
-          if (!dataPoint || coord.y == null) return;
+          const { ce, pe, price } = overlay.extendData;
+          const coord = coordinates[0];
+          
+          // Calculate bar dimensions
+          const maxOI = Math.max(ce, pe, 100);
+          const barHeight = 8;
+          const maxBarLength = 80;
+          const priceAxisX = bounding.width - 60;
+          
+          const ceLength = (ce / maxOI) * maxBarLength;
+          const peLength = (pe / maxOI) * maxBarLength;
 
-          const ceLength = (Math.abs(dataPoint.ce || 0) / maxOI) * maxBarLength;
-          const peLength = (Math.abs(dataPoint.pe || 0) / maxOI) * maxBarLength;
+          // Strike line
+          figures.push({
+            type: 'strikeLine',
+            attrs: {
+              x1: priceAxisX - maxBarLength - 20,
+              y: coord.y,
+              x2: priceAxisX + maxBarLength + 20
+            },
+            styles: {
+              color: 'rgba(150, 150, 150, 0.3)',
+              width: 1,
+              dash: [3, 3]
+            }
+          });
 
-          // CE Bar (green) - left side of price axis
+          // CE Bar (green, left side)
           if (ceLength > 0) {
             figures.push({
-              type: 'rect',
+              type: 'oiBar',
               attrs: {
                 x: priceAxisX - ceLength - 5,
                 y: coord.y - barHeight / 2,
                 width: ceLength,
-                height: barHeight,
+                height: barHeight
               },
               styles: {
-                style: 'fill',
-                color: 'rgba(76, 175, 80, 0.8)' // green
+                color: 'rgba(76, 175, 80, 0.8)'
               }
             });
 
-            // CE text label
+            // CE text
             figures.push({
-              type: 'text',
+              type: 'oiText',
               attrs: {
-                x: priceAxisX - ceLength - 10,
+                x: priceAxisX - ceLength - 15,
                 y: coord.y,
-                text: `${dataPoint.ce}`
+                text: `${ce}`
               },
               styles: {
                 color: '#4caf50',
                 size: 10,
-                family: 'Arial',
-                align: 'right',
-                baseline: 'middle'
+                family: 'Arial'
               }
             });
           }
 
-          // PE Bar (red) - right side of price axis
+          // PE Bar (red, right side)
           if (peLength > 0) {
             figures.push({
-              type: 'rect',
+              type: 'oiBar',
               attrs: {
                 x: priceAxisX + 5,
                 y: coord.y - barHeight / 2,
                 width: peLength,
-                height: barHeight,
+                height: barHeight
               },
               styles: {
-                style: 'fill',
-                color: 'rgba(244, 67, 54, 0.8)' // red
+                color: 'rgba(244, 67, 54, 0.8)'
               }
             });
 
-            // PE text label
+            // PE text
             figures.push({
-              type: 'text',
+              type: 'oiText',
               attrs: {
-                x: priceAxisX + peLength + 15,
+                x: priceAxisX + peLength + 20,
                 y: coord.y,
-                text: `${dataPoint.pe}`
+                text: `${pe}`
               },
               styles: {
                 color: '#f44336',
                 size: 10,
-                family: 'Arial',
-                align: 'left',
-                baseline: 'middle'
+                family: 'Arial'
               }
             });
           }
 
-          // Strike price line and label
-          figures.push({
-            type: 'line',
-            attrs: {
-              coordinates: [
-                { x: priceAxisX - maxBarLength - 20, y: coord.y },
-                { x: priceAxisX + maxBarLength + 20, y: coord.y }
-              ]
-            },
-            styles: {
-              style: 'stroke',
-              color: 'rgba(150, 150, 150, 0.3)',
-              size: 1,
-              dashedValue: [3, 3]
-            }
-          });
-
           // Strike price label
           figures.push({
-            type: 'text',
+            type: 'oiText',
             attrs: {
-              x: priceAxisX - maxBarLength - 25,
+              x: priceAxisX - maxBarLength - 30,
               y: coord.y,
-              text: `${dataPoint.price}`
+              text: `${price}`
             },
             styles: {
               color: '#666',
               size: 10,
-              family: 'Arial',
-              align: 'right',
-              baseline: 'middle'
+              family: 'Arial'
             }
           });
-        });
 
-        return figures;
-      }
-    });
+          return figures;
+        }
+      });
 
-    // 3) Generate synthetic candle data
+      registeredRef.current = true;
+    }
+
+    // 5. Initialize chart
+    const chart = init(ref.current);
+
+    // 6. Generate synthetic candle data
     const candles = Array.from({ length: 50 }, (_, i) => {
       const base = 24000 + (i / 49) * 2000; // prices from 24000 to 26000
       const open = +(base + (Math.random() - 0.5) * 100).toFixed(2);
@@ -168,10 +213,10 @@ export default function OIChartAlpha5() {
       };
     });
 
-    // 4) Set candle data
+    // 7. Set candle data
     chart.applyNewData(candles);
 
-    // 5) Generate OI data for specific strike levels (like option strikes)
+    // 8. Add OI overlays for each strike
     const strikeOIData = [
       { price: 24000, ce: 1500, pe: 2200 },
       { price: 24200, ce: 2800, pe: 1900 },
@@ -186,16 +231,20 @@ export default function OIChartAlpha5() {
       { price: 26000, ce: 900, pe: 4100 },
     ];
 
-    // 6) Add overlay with OI data mapped to price points
-    chart.addOverlay({
-      name: 'oi-bars',
-      points: strikeOIData.map(strike => ({
-        timestamp: Date.now(), // current time for all strikes
-        value: strike.price, // this maps to the y-axis (price level)
-        price: strike.price,
-        ce: strike.ce,
-        pe: strike.pe
-      }))
+    // 9. Create overlays for each strike
+    strikeOIData.forEach((strike, index) => {
+      chart.createOverlay({
+        name: 'oiOverlay',
+        points: [{
+          timestamp: Date.now(),
+          value: strike.price
+        }],
+        extendData: {
+          price: strike.price,
+          ce: strike.ce,
+          pe: strike.pe
+        }
+      });
     });
 
     // cleanup
